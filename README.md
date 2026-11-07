@@ -12,7 +12,7 @@ Website creator network (clone tính năng của metub.net, đổi tên + giao d
 Cần Node.js >= 22.13.
 
 ```bash
-npm start          # http://localhost:3000, admin: /admin (mật khẩu mặc định admin123)
+npm start          # http://localhost:3000, admin: /admin (không đặt ADMIN_PASSWORD thì server in mật khẩu tạm ra terminal)
 npm test
 ```
 
@@ -33,7 +33,11 @@ Biến môi trường:
 - **Đăng nhập admin:** so sánh mật khẩu thời gian hằng, khoá 15 phút sau 10 lần sai/IP, cookie `HttpOnly` (+ `Secure` khi HTTPS), phiên hết hạn sau 8 giờ.
 - **Chống spam:** form liên hệ tối đa 5 lần/10 phút/IP + ô honeypot ẩn.
 - **Header:** CSP, HSTS (khi HTTPS), X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy; chặn path traversal và file ẩn.
-- `npm test` gồm các test SQL injection, XSS, CSRF, brute-force.
+- **Không có secret trong code:** mật khẩu chỉ lấy từ biến môi trường; `.env` bị gitignore.
+- **Rate limit sau proxy:** với `TRUST_PROXY=1` chỉ tin IP cuối trong `X-Forwarded-For` (do hosting ghi), không thể giả IP để vượt giới hạn.
+- **Database:** file DB chỉ chủ sở hữu đọc/ghi (`600`); API công khai dùng kết nối **read-only**; file DB nằm ngoài thư mục `public/`.
+- **Lỗi:** người dùng chỉ thấy câu chung chung, chi tiết chỉ ghi ở log server; body > 1MB trả 413. Không bật CORS.
+- `npm test` gồm các test SQL injection, XSS, CSRF, brute-force (kể cả giả IP), lộ lỗi, CORS.
 
 ## Deploy (Render)
 1. New → Web Service → chọn repo này. Build command: để trống. Start command: `npm start`.

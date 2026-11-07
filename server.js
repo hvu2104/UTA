@@ -12,14 +12,19 @@ const PUB = path.join(ROOT, 'public');
 const PORT = +process.env.PORT || 3000;
 const PROD = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1'; // chỉ bật khi chạy sau reverse proxy (hosting), nếu không IP/HTTPS có thể bị giả
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (PROD ? '' : 'admin123');
+// không có mật khẩu mặc định trong code: thiếu biến môi trường thì production dừng, local tự sinh mật khẩu ngẫu nhiên mỗi lần chạy
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 if (PROD && ADMIN_PASSWORD.length < 12) {
   console.error('✖ Chạy production cần ADMIN_PASSWORD dài tối thiểu 12 ký tự.');
   process.exit(1);
 }
-if (!process.env.ADMIN_PASSWORD) console.warn('⚠ ADMIN_PASSWORD chưa đặt, đang dùng mật khẩu mặc định "admin123" (chỉ cho local)');
+if (!ADMIN_PASSWORD) {
+  ADMIN_PASSWORD = crypto.randomBytes(12).toString('base64url');
+  console.warn(`⚠ ADMIN_PASSWORD chưa đặt — mật khẩu admin tạm cho lần chạy này: ${ADMIN_PASSWORD}`);
+}
 
-export const db = new DatabaseSync(process.env.DB_FILE || path.join(ROOT, 'data.db'));
+const DB_FILE = process.env.DB_FILE || path.join(ROOT, 'data.db');
+export const db = new DatabaseSync(DB_FILE);
 db.exec(`
 CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL,
   excerpt TEXT DEFAULT '', body TEXT DEFAULT '', cover TEXT DEFAULT '', tags TEXT DEFAULT '', featured INTEGER DEFAULT 0,
@@ -30,6 +35,10 @@ CREATE TABLE IF NOT EXISTS contacts(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, 
   phone TEXT DEFAULT '', channel TEXT DEFAULT '', message TEXT DEFAULT '', job_id INTEGER, status TEXT DEFAULT 'new',
   created_at TEXT DEFAULT (datetime('now')));`);
 if (!db.prepare('SELECT COUNT(*) n FROM posts').get().n) seed(db);
+const onDisk = DB_FILE !== ':memory:';
+if (onDisk) try { fs.chmodSync(DB_FILE, 0o600); } catch {} // chỉ user chạy server được đọc/ghi file DB (Windows bỏ qua)
+// API công khai chỉ đọc dùng kết nối read-only: lỗ hổng ở phần công khai cũng không sửa/xoá được dữ liệu
+const ro = onDisk ? new DatabaseSync(DB_FILE, { readOnly: true }) : db;
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json',
@@ -38,9 +47,11 @@ const send = (res, code, data, headers = {}) => {
   res.writeHead(code, { 'Content-Type': 'application/json', ...headers });
   res.end(JSON.stringify(data));
 };
+const MAX_BODY = 1e6;
 const readBody = req => new Promise((ok, bad) => {
-  let s = '';
-  req.on('data', c => { s += c; if (s.length > 1e6) { bad(new Error('too large')); req.destroy(); } });
+  if (+req.headers['content-length'] > MAX_BODY) return bad(new Error('too large'));
+  let s = '', over = false;
+  req.on('data', c => { if (over) return; s += c; if (s.length > MAX_BODY) { over = true; s = ''; bad(new Error('too large')); } });
   req.on('end', () => {
     try { const v = s ? JSON.parse(s) : {}; v && typeof v === 'object' && !Array.isArray(v) ? ok(v) : bad(new Error('bad json')); }
     catch { bad(new Error('bad json')); }
@@ -76,7 +87,8 @@ setInterval(() => { // dọn bộ đếm và phiên hết hạn để không ph�
   for (const [k, arr] of hits) if (now - arr[arr.length - 1] > 3600e3) hits.delete(k);
   for (const [t, exp] of sessions) if (exp <= now) sessions.delete(t);
 }, 600e3).unref();
-const clientIp = req => (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
+// lấy IP CUỐI trong X-Forwarded-For: do proxy của hosting ghi vào. IP đầu do người dùng tự gửi được → dùng nó thì vượt rate limit
+const clientIp = req => (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
 const isHttps = req => TRUST_PROXY ? req.headers['x-forwarded-proto'] === 'https' : !!req.socket.encrypted;
 
 // chỉ nhận link http(s) hoặc đường dẫn nội bộ, chặn javascript:/data: lọt vào src/href
@@ -110,23 +122,23 @@ async function api(req, res, url) {
   if (m === 'GET' && p === '/api/posts') {
     const cat = str(q.get('category'), 60), page = int(q.get('page'), 1, 1, 10000), size = int(q.get('size'), 9, 1, 30);
     const where = 'WHERE published=1' + (cat ? ' AND category=?' : ''), args = cat ? [cat] : [];
-    const total = db.prepare(`SELECT COUNT(*) n FROM posts ${where}`).get(...args).n;
-    const items = db.prepare(`SELECT ${postCols} FROM posts ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
+    const total = ro.prepare(`SELECT COUNT(*) n FROM posts ${where}`).get(...args).n;
+    const items = ro.prepare(`SELECT ${postCols} FROM posts ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
       .all(...args, size, (page - 1) * size);
-    const featured = db.prepare(`SELECT ${postCols} FROM posts WHERE published=1 AND featured=1 ORDER BY created_at DESC LIMIT 5`).all();
-    const categories = db.prepare('SELECT category, COUNT(*) n FROM posts WHERE published=1 GROUP BY category').all();
+    const featured = ro.prepare(`SELECT ${postCols} FROM posts WHERE published=1 AND featured=1 ORDER BY created_at DESC LIMIT 5`).all();
+    const categories = ro.prepare('SELECT category, COUNT(*) n FROM posts WHERE published=1 GROUP BY category').all();
     return send(res, 200, { items, total, page, pages: Math.ceil(total / size), featured, categories });
   }
   let r;
   if (m === 'GET' && (r = p.match(/^\/api\/posts\/([\w-]+)$/))) {
-    const post = db.prepare('SELECT * FROM posts WHERE slug=? AND published=1').get(r[1]);
+    const post = ro.prepare('SELECT * FROM posts WHERE slug=? AND published=1').get(r[1]);
     if (!post) return send(res, 404, { error: 'Không tìm thấy bài viết' });
-    const related = db.prepare(`SELECT ${postCols} FROM posts WHERE published=1 AND category=? AND id!=? ORDER BY created_at DESC LIMIT 4`)
+    const related = ro.prepare(`SELECT ${postCols} FROM posts WHERE published=1 AND category=? AND id!=? ORDER BY created_at DESC LIMIT 4`)
       .all(post.category, post.id);
     return send(res, 200, { post, related });
   }
   if (m === 'GET' && p === '/api/jobs')
-    return send(res, 200, db.prepare('SELECT * FROM jobs WHERE open=1 ORDER BY created_at DESC, id DESC').all());
+    return send(res, 200, ro.prepare('SELECT * FROM jobs WHERE open=1 ORDER BY created_at DESC, id DESC').all());
 
   if (m === 'POST' && p === '/api/contact') {
     if (limited('contact:' + clientIp(req), 5, 600e3)) return send(res, 429, { error: 'Bạn gửi quá nhiều, thử lại sau ít phút.' });
@@ -140,7 +152,7 @@ async function api(req, res, url) {
     const errors = {};
     if (!EMAIL.test(c.email)) errors.email = 'Email không hợp lệ';
     if (kind !== 'job' && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(c.channel)) errors.channel = 'Link kênh không hợp lệ';
-    if (kind === 'job' && !db.prepare('SELECT 1 FROM jobs WHERE id=? AND open=1').get(c.job_id)) errors.job = 'Vị trí không còn tuyển';
+    if (kind === 'job' && !ro.prepare('SELECT 1 FROM jobs WHERE id=? AND open=1').get(c.job_id)) errors.job = 'Vị trí không còn tuyển';
     if (!/^[+\d][\d\s.-]{7,}$/.test(c.phone)) errors.phone = 'Số điện thoại không hợp lệ';
     if (kind === 'job' && !c.name) errors.name = 'Cần họ tên';
     if (Object.keys(errors).length) return send(res, 400, { error: 'Thông tin chưa hợp lệ', errors });
@@ -237,7 +249,9 @@ export const server = http.createServer(async (req, res) => {
   } catch (e) {
     const client = e instanceof URIError || /json|large|Invalid URL/.test(e.message);
     if (!client) console.error(e);
-    if (!res.headersSent) send(res, client ? 400 : 500, { error: 'Yêu cầu không hợp lệ' });
+    if (!res.headersSent) send(res, e.message === 'too large' ? 413 : client ? 400 : 500,
+      { error: e.message === 'too large' ? 'Dữ liệu quá lớn' : client ? 'Yêu cầu không hợp lệ' : 'Lỗi máy chủ, thử lại sau' },
+      { Connection: 'close' });
   }
 });
 server.requestTimeout = 30e3; // không để kết nối treo giữ tài nguyên

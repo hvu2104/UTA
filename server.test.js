@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 process.env.DB_FILE = ':memory:';
 process.env.ADMIN_PASSWORD = 'test-pass';
+process.env.TRUST_PROXY = '1';
 const { server } = await import('./server.js');
 let base;
 before(() => new Promise(ok => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
@@ -96,6 +97,24 @@ test('bảo mật: CSRF, body lạ, giới hạn đăng nhập', async () => {
   let last;
   for (let i = 0; i < 11; i++) last = await call('/api/admin/login', { method: 'POST', body: { password: 'sai' + i } });
   assert.equal(last.status, 429);
+});
+
+test('bảo mật: giả X-Forwarded-For không vượt được giới hạn đăng nhập', async () => {
+  let last;
+  // proxy thật luôn nối IP thật (9.9.9.9) vào cuối; phần đầu kẻ tấn công tự đổi liên tục
+  for (let i = 0; i < 11; i++) last = await call('/api/admin/login', { method: 'POST',
+    headers: { 'X-Forwarded-For': `10.0.0.${i}, 9.9.9.9` }, body: { password: 'sai' } });
+  assert.equal(last.status, 429);
+});
+
+test('bảo mật: body quá lớn trả 413, lỗi không lộ chi tiết, không CORS', async () => {
+  const big = await fetch(base + '/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'a'.repeat(1.2e6) }) });
+  assert.equal(big.status, 413);
+  const bad = await fetch(base + '/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{oops' });
+  const txt = await bad.text();
+  assert.doesNotMatch(txt, /at |Error|stack|\.js/);
+  assert.equal((await call('/api/posts', { headers: { Origin: 'https://evil.example' } })).headers.get('access-control-allow-origin'), null);
 });
 
 test('trang: route đẹp và 404, chặn path traversal', async () => {
