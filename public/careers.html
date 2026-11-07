@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuyển dụng | VYRA NETWORK</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+.job{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:26px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.job h3{font-size:clamp(20px,3vw,30px);transition:.25s}
+.job:hover h3{color:var(--a1)}
+.job .tag{margin:0}
+.jd{white-space:pre-line;color:var(--muted);margin:16px 0 8px}
+</style>
+</head>
+<body>
+<main>
+<section class="page-top">
+  <div class="wrap">
+    <h1 class="page" data-en="Join the <span class='grad'>passion starship.</span>">Gia nhập <span class="grad">con tàu đam mê.</span></h1>
+    <p class="lead" style="margin-bottom:56px" data-en="We are looking for people who love digital content.">Chúng tôi tìm kiếm những người yêu nội dung số và muốn cùng creator đi xa hơn.</p>
+    <div class="eyebrow mono" data-i18n="open_roles"></div>
+    <div class="tabs" id="tabs"></div>
+    <div id="jobs" style="border-top:1px solid var(--line)"></div>
+  </div>
+</section>
+</main>
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<script type="module">
+import { $, $$, api, esc, t, contactForm } from '/assets/app.js';
+const jobs = await api('/api/jobs');
+let dept = '';
+const depts = [...new Set(jobs.map(j => j.department))];
+function render() {
+  $('#tabs').innerHTML = [['', t('all_dept')], ...depts.map(d => [d, d])].map(([v, l]) => `<button data-v="${esc(v)}" class="${v === dept ? 'on' : ''}">${esc(l)}</button>`).join('');
+  $('#jobs').innerHTML = jobs.filter(j => !dept || j.department === dept).map(j => `<div class="job" data-id="${j.id}">
+    <div><h3>${esc(j.title)}</h3><div class="meta"><b>${esc(j.department)}</b> • ${esc(j.location)}</div></div>
+    <span class="tag">${esc(j.type)}</span></div>`).join('') || '<p class="empty">Hiện chưa có vị trí nào.</p>';
+}
+$('#tabs').onclick = e => { if (e.target.dataset.v === undefined) return; dept = e.target.dataset.v; render(); };
+$('#jobs').onclick = e => {
+  const el = e.target.closest('.job'); if (!el) return;
+  const j = jobs.find(x => x.id === +el.dataset.id);
+  $('#dlgBody').innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px"><h2 style="font-size:30px">${esc(j.title)}</h2><button class="btn sm" onclick="dlg.close()">✕</button></div>
+    <div class="meta"><b>${esc(j.department)}</b> • ${esc(j.location)} • ${esc(j.type)}</div>
+    <div class="jd">${esc(j.description)}</div><h3 style="margin-top:20px" data-i18n="apply"></h3><div id="apply"></div>`;
+  contactForm($('#apply'), { kind: 'job', jobId: j.id });
+  $('#dlg').showModal();
+};
+addEventListener('langchange', render);
+render();
+</script>
+</body>
+</html>

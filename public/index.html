@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VYRA NETWORK | Nền tảng Creator Economy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+.hero{min-height:100vh;display:grid;place-items:center;text-align:center;position:relative;overflow:hidden;
+  background:radial-gradient(60% 60% at 50% 40%,#22d3ee33,transparent 70%),radial-gradient(40% 40% at 70% 70%,#a3e63522,transparent 70%),var(--bg)}
+.hero h1{font-size:clamp(48px,10vw,140px);letter-spacing:-.04em;line-height:1}
+.hero h1 .word{display:inline-block;opacity:0;transform:translateY(40px);animation:up .8s forwards}
+.hero h1 .word:nth-child(2){animation-delay:.15s}.hero h1 .word:nth-child(3){animation-delay:.3s}
+@keyframes up{to{opacity:1;transform:none}}
+.hero p{color:var(--muted);margin-top:18px}
+.scroll-hint{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase}
+.scroll-hint::after{content:"";display:block;width:1px;height:40px;background:var(--grad);margin:10px auto 0;animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.2}}
+.creator{width:220px;aspect-ratio:3/4;border-radius:20px;flex:none;transition:transform .3s}
+.creator:hover{transform:scale(1.04) rotate(-1deg)}
+.creator .tag{position:absolute;left:12px;bottom:12px;background:#000a;padding:4px 10px;border-radius:999px;color:#fff;border:0;margin:0}
+.vlist{margin-top:56px;border-top:1px solid var(--line)}
+.vrow{display:flex;align-items:center;gap:28px;padding:26px 0;border-bottom:1px solid var(--line);position:relative}
+.vrow .n{color:var(--a1);font-size:14px;width:44px}
+.vrow .t{font-size:clamp(28px,5vw,64px);font-weight:700;letter-spacing:.02em;color:#3a4767;transition:.3s}
+.vrow:hover .t{color:var(--text);transform:translateX(12px)}
+.vrow .peek{position:absolute;right:0;top:50%;width:200px;aspect-ratio:16/10;border-radius:14px;opacity:0;transform:translateY(-50%) scale(.85) rotate(4deg);transition:.35s;pointer-events:none}
+.vrow:hover .peek{opacity:1;transform:translateY(-50%) scale(1) rotate(-3deg)}
+.slides{display:flex;transition:transform .6s cubic-bezier(.7,0,.2,1)}
+.slide{min-width:100%}
+.slide .ph{aspect-ratio:21/9;border-radius:24px;font-size:14px}
+.cap{display:flex;justify-content:center;gap:16px;margin-top:20px;font-weight:500}.cap i{color:var(--a1);font-style:normal}
+.dots{display:flex;justify-content:center;gap:8px;margin-top:16px}
+.dots button{width:22px;height:4px;border-radius:4px;border:0;background:var(--line);cursor:pointer;transition:.3s}
+.dots button.on{width:40px;background:var(--a1)}
+@media (max-width:900px){.vrow .peek{display:none}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div>
+    <h1><span class="word">.create</span> <span class="word grad">beyond</span> <span class="word">limits</span></h1>
+    <p data-en="The creator companion platform of Southeast Asia">Nền tảng đồng hành cùng nhà sáng tạo nội dung Đông Nam Á</p>
+  </div>
+  <div class="scroll-hint" data-en="Scroll for more">Cuộn xuống</div>
+</header>
+
+<main>
+<section>
+  <div class="wrap head-row rv">
+    <div>
+      <div class="eyebrow mono">// Creator Partners</div>
+      <h2 data-en="Congratulations to<br><span class='grad'>Our Creator Partners</span>">Chúc mừng các<br><span class="grad">Creator đối tác</span></h2>
+      <p class="lead" data-en="As their companion on the journey, VYRA deeply values the creativity, dedication and hard work of our partners.">Là người bạn đồng hành, VYRA trân trọng sự sáng tạo, tâm huyết và nỗ lực của các đối tác — những người mang nghệ thuật, giải trí, ẩm thực và cảm hứng tới khán giả.</p>
+    </div>
+    <a href="/for-creators" class="btn"><span data-i18n="creators"></span> ↗</a>
+  </div>
+  <div class="marquee"><div class="track" id="t1"></div><div class="track rev" id="t2"></div></div>
+</section>
+
+<section style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap rv">
+    <div class="eyebrow mono">// Since 2014</div>
+    <h2 data-en="Record-Breaking<br><span class='grad'>Milestones.</span>">Những cột mốc<br><span class="grad">phá kỷ lục.</span></h2>
+    <p class="lead" data-en="Billions of views, hundreds of millions of subscribers and prestigious honors — proof of an ecosystem built on passion.">Hàng tỷ lượt xem, hàng trăm triệu người đăng ký và những giải thưởng danh giá — minh chứng cho một hệ sinh thái xây dựng bằng đam mê.</p>
+    <div class="grid-stats">
+      <div class="stat"><div class="k mono">CREATOR ECOSYSTEM</div><div class="v"><span data-count="2000">0</span>+</div><div class="d">Celebrities &amp; creators</div></div>
+      <div class="stat"><div class="k mono">TOTAL ANNUAL VIEWS</div><div class="v"><span data-count="60">0</span>B+</div><div class="d">Annual views</div></div>
+      <div class="stat"><div class="k mono">SUBSCRIBER GROWTH</div><div class="v"><span data-count="500">0</span>M+</div><div class="d">Generated subscribers</div></div>
+      <div class="stat"><div class="k mono">WATCH HOURS</div><div class="v"><span data-count="1.5" data-dec="1">0</span>B+</div><div class="d">Generated watch hours</div></div>
+      <div class="stat"><div class="k mono">SHOPPING COVERAGE</div><div class="v"><span data-count="46">0</span>K+</div><div class="d">Videos with shopping tag</div></div>
+      <div class="stat"><div class="k mono">AWARDS</div><div class="v"><span data-count="1690">0</span></div><div class="d">Play buttons</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="head-row rv">
+      <div>
+        <h2 data-en="You focus on creating.<br><span class='grad'>VYRA handles the rest.</span>">Bạn tập trung sáng tạo.<br><span class="grad">VYRA lo phần còn lại.</span></h2>
+        <p class="lead" data-en="Turning your content into more solutions and opportunities across a diverse range of verticals.">Biến nội dung của bạn thành nhiều giải pháp và cơ hội hơn, hỗ trợ đa dạng mảng nội dung.</p>
+      </div>
+      <a href="/for-creators" class="btn fill"><span data-i18n="creators"></span> ↗</a>
+    </div>
+    <div class="vlist" id="vlist"></div>
+  </div>
+</section>
+
+<section style="background:var(--bg2)">
+  <div class="wrap rv">
+    <div class="eyebrow mono">// Brand × Creator</div>
+    <h2 data-en="Proud to connect thousands of<br><span class='grad'>Brand and Creator partners.</span>">Kết nối hàng nghìn<br><span class="grad">Brand và Creator.</span></h2>
+    <div style="overflow:hidden;border-radius:24px;margin-top:56px"><div class="slides" id="slides"></div></div>
+    <div class="dots" id="dots"></div>
+  </div>
+  <div class="marquee" style="margin-top:72px"><div class="logos" id="logos"></div></div>
+  <div style="text-align:center;margin-top:56px"><a href="/contact?kind=brand" class="btn">For Brands ↗</a></div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="head-row rv">
+      <h2 data-en="Trending <span class='grad'>News.</span>">Tin <span class="grad">nổi bật.</span></h2>
+      <a href="/blog" class="btn"><span data-i18n="all"></span> ↗</a>
+    </div>
+    <div class="grid3" id="posts"></div>
+  </div>
+</section>
+
+<div data-contact-section></div>
+</main>
+
+<script type="module">
+import { $, $$, api, esc, ph, fmtDate, reveal } from '/assets/app.js';
+
+const names = 'ABCDEFGHIJ'.split('').map(c => 'Creator ' + c);
+const card = (n, i) => `<div class="creator ph" style="--h:${(i * 37) % 360}">[ảnh ${n}]<span class="tag">@${n.replace(' ', '').toLowerCase()}</span></div>`;
+$('#t1').innerHTML = [...names, ...names].map(card).join('');
+$('#t2').innerHTML = [...names, ...names].reverse().map(card).join('');
+
+const verts = ['MUSIC', 'GAMING', 'SPORT', 'FOOD & TRAVEL', 'LIFESTYLE', 'FASHION & BEAUTY'];
+$('#vlist').innerHTML = verts.map((v, i) => `<a href="/for-creators" class="vrow"><span class="n mono">[0${i + 1}]</span><span class="t">${v}</span><div class="peek ph" style="--h:${i * 55}">[${v.toLowerCase()}]</div></a>`).join('');
+
+const cases = [['Chiến dịch A', 'Brand X'], ['Chiến dịch B', 'Brand Y'], ['Chiến dịch C', 'Brand Z'], ['Chiến dịch D', 'Brand W']];
+$('#slides').innerHTML = cases.map((c, i) => `<div class="slide">${ph('ảnh case study: ' + c[0], 150 + i * 40)}<div class="cap">VYRA Network <i>×</i> ${c[1]}</div></div>`).join('');
+$('#dots').innerHTML = cases.map((_, i) => `<button aria-label="Slide ${i + 1}"></button>`).join('');
+let cur = 0; const dots = [...$('#dots').children];
+const go = i => { cur = i; $('#slides').style.transform = `translateX(-${i * 100}%)`; dots.forEach((d, j) => d.classList.toggle('on', j === i)); };
+dots.forEach((d, i) => d.onclick = () => go(i)); go(0);
+setInterval(() => go((cur + 1) % cases.length), 4000);
+const logos = ['BRAND ONE', 'Logoipsum', 'ACME', 'Nova Co.', 'Lumen', 'Brand Six', 'Orbit'];
+$('#logos').innerHTML = [...logos, ...logos].map(l => `<span>${l}</span>`).join('');
+
+const { items } = await api('/api/posts?size=6');
+$('#posts').innerHTML = items.map((p, i) => `<a href="/blog/${p.slug}" class="post rv">${ph('thumbnail', 200 + i * 25, p.cover)}<h3>${esc(p.title)}</h3><div class="meta"><b>${esc(p.category)}</b> • ${fmtDate(p.created_at)}</div></a>`).join('');
+reveal();
+</script>
+</body>
+</html>

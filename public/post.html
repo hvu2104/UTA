@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog | VYRA NETWORK</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+.share{display:flex;gap:8px;margin-top:32px}
+</style>
+</head>
+<body>
+<main>
+<section class="page-top"><div class="wrap" id="art"><p class="empty">Đang tải…</p></div></section>
+<section style="padding-top:0"><div class="wrap">
+  <h2 style="font-size:36px" data-i18n="related"></h2>
+  <div class="grid3" id="rel" style="margin-top:28px"></div>
+</div></section>
+</main>
+<script type="module">
+import { $, api, esc, ph, fmtDate } from '/assets/app.js';
+const slug = location.pathname.split('/').pop();
+try {
+  const { post: p, related } = await api('/api/posts/' + encodeURIComponent(slug));
+  document.title = p.title + ' | VYRA NETWORK';
+  $('#art').innerHTML = `<article class="prose">
+    <div class="crumb"><a href="/">Home</a> / <a href="/blog">Blog</a> / <a href="/blog?category=${encodeURIComponent(p.category)}">${esc(p.category)}</a></div>
+    <h1 style="font-size:clamp(34px,5vw,56px);line-height:1.1;letter-spacing:-.02em">${esc(p.title)}</h1>
+    <p class="meta" style="margin:16px 0 32px">By Admin • ${fmtDate(p.created_at)}</p>
+    <div style="aspect-ratio:16/9;border-radius:24px;overflow:hidden;margin-bottom:40px">${ph('ảnh bìa bài viết', 200, p.cover)}</div>
+    ${p.body.split(/\n{2,}/).map(x => `<p>${esc(x)}</p>`).join('')}
+    <div>${p.tags.split(',').filter(Boolean).map(x => `<span class="tag">#${esc(x.trim())}</span>`).join('')}</div>
+    <div class="share"><button class="btn sm" id="copy">🔗 Copy link</button>
+      <a class="btn sm" target="_blank" rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href)}">Facebook</a></div>
+  </article>`;
+  $('#copy').onclick = async () => { await navigator.clipboard.writeText(location.href); $('#copy').textContent = '✓ Đã copy'; };
+  $('#rel').innerHTML = related.map(r => `<a href="/blog/${r.slug}" class="post">${ph('thumbnail', 200 + r.id * 23 % 160, r.cover)}<h3>${esc(r.title)}</h3><div class="meta"><b>${esc(r.category)}</b> • ${fmtDate(r.created_at)}</div></a>`).join('') || '<p class="muted">—</p>';
+} catch (e) {
+  $('#art').innerHTML = `<div class="empty"><h2>404</h2><p>${esc(e.message)}</p><a class="btn" href="/blog" style="margin-top:20px">← Blog</a></div>`;
+  $('#rel').closest('section').hidden = true;
+}
+</script>
+</body>
+</html>
