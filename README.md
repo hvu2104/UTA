@@ -23,7 +23,9 @@ Biến môi trường:
 | `NODE_ENV=production` | Bật chế độ chạy thật: server **từ chối khởi động** nếu thiếu `ADMIN_PASSWORD` hoặc ngắn hơn 12 ký tự |
 | `ADMIN_PASSWORD` | Mật khẩu admin (bắt buộc khi deploy) |
 | `TRUST_PROXY=1` | Đặt khi chạy sau hosting/reverse proxy để lấy đúng IP người dùng và nhận biết HTTPS |
-| `DB_FILE` | Đường dẫn file database, ví dụ `/data/data.db` |
+| `CLIENT_IP_HEADER` | Header chứa IP thật của người dùng (mặc định `x-forwarded-for`). Sau Cloudflare đặt `cf-connecting-ip` |
+| `DATA_DIR` | Thư mục ổ lưu bền (hosting tự đặt `/data`); database lưu ở `DATA_DIR/data.db` |
+| `DB_FILE` | Ghi đè đường dẫn file database (tuỳ chọn) |
 | `PORT` | Cổng, mặc định 3000 |
 
 ## Bảo mật
@@ -38,6 +40,11 @@ Biến môi trường:
 - **Database:** file DB chỉ chủ sở hữu đọc/ghi (`600`); API công khai dùng kết nối **read-only**; file DB nằm ngoài thư mục `public/`.
 - **Lỗi:** người dùng chỉ thấy câu chung chung, chi tiết chỉ ghi ở log server; body > 1MB trả 413. Không bật CORS.
 - `npm test` gồm các test SQL injection, XSS, CSRF, brute-force (kể cả giả IP), lộ lỗi, CORS.
+
+## Deploy (ZCloudViet Vibe Hosting — đang chạy tại https://utaasia.zcloudviet.xyz)
+- Dự án `utaasia`, app `web`, build `railpack`.
+- Biến đã đặt: `NODE_ENV=production`, `TRUST_PROXY=1`, `CLIENT_IP_HEADER=cf-connecting-ip`, `ADMIN_PASSWORD` (hosting tự có `PORT`, `DATA_DIR=/data`).
+- Deploy lại: nén thư mục (bỏ `node_modules`, `.git`, `.env*`, `data.db*`) rồi tải lên qua `deploy_upload` của MCP zcloudviet.
 
 ## Deploy (Render)
 1. New → Web Service → chọn repo này. Build command: để trống. Start command: `npm start`.

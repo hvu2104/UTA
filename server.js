@@ -23,7 +23,7 @@ if (!ADMIN_PASSWORD) {
   console.warn(`⚠ ADMIN_PASSWORD chưa đặt — mật khẩu admin tạm cho lần chạy này: ${ADMIN_PASSWORD}`);
 }
 
-const DB_FILE = process.env.DB_FILE || path.join(ROOT, 'data.db');
+const DB_FILE = process.env.DB_FILE || path.join(process.env.DATA_DIR || ROOT, 'data.db'); // hosting đặt DATA_DIR=/data (ổ bền)
 export const db = new DatabaseSync(DB_FILE);
 db.exec(`
 CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL,
@@ -87,8 +87,16 @@ setInterval(() => { // dọn bộ đếm và phiên hết hạn để không ph�
   for (const [k, arr] of hits) if (now - arr[arr.length - 1] > 3600e3) hits.delete(k);
   for (const [t, exp] of sessions) if (exp <= now) sessions.delete(t);
 }, 600e3).unref();
-// lấy IP CUỐI trong X-Forwarded-For: do proxy của hosting ghi vào. IP đầu do người dùng tự gửi được → dùng nó thì vượt rate limit
-const clientIp = req => (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',').pop().trim()) || req.socket.remoteAddress;
+// Header chứa IP thật, tuỳ hosting. Sau Cloudflare dùng CLIENT_IP_HEADER=cf-connecting-ip (Cloudflare ghi đè, client không giả được).
+// Với X-Forwarded-For lấy IP CUỐI (proxy ghi vào); IP đầu do người dùng tự gửi được → dùng nó thì vượt rate limit.
+const IP_HEADER = (process.env.CLIENT_IP_HEADER || 'x-forwarded-for').toLowerCase();
+const clientIp = req => {
+  const raw = TRUST_PROXY && String(req.headers[IP_HEADER] || '').split(',').pop().trim();
+  const ip = raw || req.socket.remoteAddress || '';
+  // IPv6: một người thường có cả dải /64 → gom theo 4 nhóm đầu để không đổi địa chỉ lách được giới hạn.
+  // shortcut: không mở rộng dạng viết tắt "::", đủ cho địa chỉ thật từ Cloudflare/proxy
+  return ip.includes(':') && !ip.startsWith('::ffff:') ? ip.split(':').slice(0, 4).join(':') : ip;
+};
 const isHttps = req => TRUST_PROXY ? req.headers['x-forwarded-proto'] === 'https' : !!req.socket.encrypted;
 
 // chỉ nhận link http(s) hoặc đường dẫn nội bộ, chặn javascript:/data: lọt vào src/href
@@ -257,4 +265,4 @@ export const server = http.createServer(async (req, res) => {
 server.requestTimeout = 30e3; // không để kết nối treo giữ tài nguyên
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(ROOT, 'server.js'))
-  server.listen(PORT, () => console.log(`VYRA chạy tại http://localhost:${PORT}  (admin: /admin)`));
+  server.listen(PORT, '0.0.0.0', () => console.log(`VYRA chạy tại cổng ${PORT}, database: ${DB_FILE}`));

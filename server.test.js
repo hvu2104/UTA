@@ -107,6 +107,13 @@ test('bảo mật: giả X-Forwarded-For không vượt được giới hạn đ
   assert.equal(last.status, 429);
 });
 
+test('bảo mật: các IPv6 cùng dải /64 bị tính chung một người', async () => {
+  let last;
+  for (let i = 0; i < 11; i++) last = await call('/api/admin/login', { method: 'POST',
+    headers: { 'X-Forwarded-For': `2402:800:62d0:bfe0:${i}::1` }, body: { password: 'sai' } });
+  assert.equal(last.status, 429);
+});
+
 test('bảo mật: body quá lớn trả 413, lỗi không lộ chi tiết, không CORS', async () => {
   const big = await fetch(base + '/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: 'a'.repeat(1.2e6) }) });
