@@ -10,8 +10,14 @@ import { seed } from './seed.js';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = path.join(ROOT, 'public');
 const PORT = +process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'; // đổi bằng biến môi trường khi deploy
-if (!process.env.ADMIN_PASSWORD) console.warn('⚠ ADMIN_PASSWORD chưa đặt, đang dùng mật khẩu mặc định "admin123"');
+const PROD = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = process.env.TRUST_PROXY === '1'; // chỉ bật khi chạy sau reverse proxy (hosting), nếu không IP/HTTPS có thể bị giả
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (PROD ? '' : 'admin123');
+if (PROD && ADMIN_PASSWORD.length < 12) {
+  console.error('✖ Chạy production cần ADMIN_PASSWORD dài tối thiểu 12 ký tự.');
+  process.exit(1);
+}
+if (!process.env.ADMIN_PASSWORD) console.warn('⚠ ADMIN_PASSWORD chưa đặt, đang dùng mật khẩu mặc định "admin123" (chỉ cho local)');
 
 export const db = new DatabaseSync(process.env.DB_FILE || path.join(ROOT, 'data.db'));
 db.exec(`
@@ -35,9 +41,13 @@ const send = (res, code, data, headers = {}) => {
 const readBody = req => new Promise((ok, bad) => {
   let s = '';
   req.on('data', c => { s += c; if (s.length > 1e6) { bad(new Error('too large')); req.destroy(); } });
-  req.on('end', () => { try { ok(s ? JSON.parse(s) : {}); } catch { bad(new Error('bad json')); } });
+  req.on('end', () => {
+    try { const v = s ? JSON.parse(s) : {}; v && typeof v === 'object' && !Array.isArray(v) ? ok(v) : bad(new Error('bad json')); }
+    catch { bad(new Error('bad json')); }
+  });
 });
-const str = (v, max) => String(v ?? '').trim().slice(0, max);
+const str = (v, max) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').trim().slice(0, max);
+const int = (v, def, min, max) => { const n = Number.parseInt(v, 10); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def; };
 const slugify = s => str(s, 200).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
   .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'post-' + Date.now();
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,14 +56,31 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const sessions = new Map();
 const SESSION_MS = 8 * 3600e3;
 const cookie = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(p => p[0]));
-const isAdmin = req => { const t = cookie(req).sid, exp = t && sessions.get(t); return exp > Date.now(); };
-const samePass = p => { const a = Buffer.from(String(p)), b = Buffer.from(ADMIN_PASSWORD);
-  return a.length === b.length && crypto.timingSafeEqual(a, b); };
+const isAdmin = req => {
+  const t = cookie(req).sid, exp = t && sessions.get(t);
+  if (exp && exp <= Date.now()) sessions.delete(t);
+  return exp > Date.now();
+};
+// so sánh qua hash cùng độ dài để không lộ độ dài mật khẩu qua thời gian phản hồi
+const sha = s => crypto.createHash('sha256').update(String(s)).digest();
+const samePass = p => !!ADMIN_PASSWORD && crypto.timingSafeEqual(sha(p), sha(ADMIN_PASSWORD));
 
-// chống spam form: tối đa 5 lần / 10 phút / IP. shortcut: bộ đếm trong RAM, đủ cho 1 instance
+// giới hạn tần suất theo IP. shortcut: bộ đếm trong RAM, đủ cho 1 instance; nhiều instance thì chuyển sang Redis
 const hits = new Map();
-const limited = ip => { const now = Date.now(), arr = (hits.get(ip) || []).filter(t => now - t < 600e3);
-  arr.push(now); hits.set(ip, arr); return arr.length > 5; };
+const limited = (key, max, windowMs) => {
+  const now = Date.now(), arr = (hits.get(key) || []).filter(t => now - t < windowMs);
+  arr.push(now); hits.set(key, arr); return arr.length > max;
+};
+setInterval(() => { // dọn bộ đếm và phiên hết hạn để không phình RAM
+  const now = Date.now();
+  for (const [k, arr] of hits) if (now - arr[arr.length - 1] > 3600e3) hits.delete(k);
+  for (const [t, exp] of sessions) if (exp <= now) sessions.delete(t);
+}, 600e3).unref();
+const clientIp = req => (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
+const isHttps = req => TRUST_PROXY ? req.headers['x-forwarded-proto'] === 'https' : !!req.socket.encrypted;
+
+// chỉ nhận link http(s) hoặc đường dẫn nội bộ, chặn javascript:/data: lọt vào src/href
+const safeUrl = v => { const s = str(v, 500); return /^(https?:\/\/|\/(?!\/))/i.test(s) ? s : ''; };
 
 // ---------- API ----------
 const postCols = 'id,slug,title,category,excerpt,cover,tags,featured,created_at';
@@ -61,7 +88,7 @@ function postInput(b) {
   const title = str(b.title, 200), category = str(b.category, 60);
   if (!title || !category) return null;
   return { title, category, slug: slugify(b.slug || title), excerpt: str(b.excerpt, 500), body: str(b.body, 50000),
-    cover: str(b.cover, 500), tags: str(b.tags, 200), featured: b.featured ? 1 : 0, published: b.published === false ? 0 : 1 };
+    cover: safeUrl(b.cover), tags: str(b.tags, 200), featured: b.featured ? 1 : 0, published: b.published === false ? 0 : 1 };
 }
 function jobInput(b) {
   const title = str(b.title, 200), department = str(b.department, 80);
@@ -81,7 +108,7 @@ async function api(req, res, url) {
 
   // --- công khai ---
   if (m === 'GET' && p === '/api/posts') {
-    const cat = q.get('category'), page = Math.max(1, +q.get('page') || 1), size = Math.min(30, +q.get('size') || 9);
+    const cat = str(q.get('category'), 60), page = int(q.get('page'), 1, 1, 10000), size = int(q.get('size'), 9, 1, 30);
     const where = 'WHERE published=1' + (cat ? ' AND category=?' : ''), args = cat ? [cat] : [];
     const total = db.prepare(`SELECT COUNT(*) n FROM posts ${where}`).get(...args).n;
     const items = db.prepare(`SELECT ${postCols} FROM posts ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
@@ -102,16 +129,18 @@ async function api(req, res, url) {
     return send(res, 200, db.prepare('SELECT * FROM jobs WHERE open=1 ORDER BY created_at DESC, id DESC').all());
 
   if (m === 'POST' && p === '/api/contact') {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
-    if (limited(ip)) return send(res, 429, { error: 'Bạn gửi quá nhiều, thử lại sau ít phút.' });
+    if (limited('contact:' + clientIp(req), 5, 600e3)) return send(res, 429, { error: 'Bạn gửi quá nhiều, thử lại sau ít phút.' });
     const b = await readBody(req);
     if (b.website) return send(res, 200, { ok: true }); // honeypot: bot điền ô ẩn thì bỏ qua
     const kind = ['creator', 'brand', 'partner', 'job'].includes(b.kind) ? b.kind : 'creator';
-    const c = { kind, name: str(b.name, 120), email: str(b.email, 200), phone: str(b.phone, 30), channel: str(b.channel, 300),
-      message: str(b.message, 5000), job_id: kind === 'job' ? (+b.job_id || null) : null };
+    let channel = str(b.channel, 300);
+    if (channel && !/^https?:\/\//i.test(channel)) channel = 'https://' + channel; // người dùng hay gõ thiếu https://
+    const c = { kind, name: str(b.name, 120), email: str(b.email, 200), phone: str(b.phone, 30), channel: safeUrl(channel),
+      message: str(b.message, 5000), job_id: kind === 'job' ? int(b.job_id, null, 1, 1e9) : null };
     const errors = {};
     if (!EMAIL.test(c.email)) errors.email = 'Email không hợp lệ';
-    if (kind !== 'job' && !c.channel) errors.channel = 'Cần link kênh';
+    if (kind !== 'job' && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(c.channel)) errors.channel = 'Link kênh không hợp lệ';
+    if (kind === 'job' && !db.prepare('SELECT 1 FROM jobs WHERE id=? AND open=1').get(c.job_id)) errors.job = 'Vị trí không còn tuyển';
     if (!/^[+\d][\d\s.-]{7,}$/.test(c.phone)) errors.phone = 'Số điện thoại không hợp lệ';
     if (kind === 'job' && !c.name) errors.name = 'Cần họ tên';
     if (Object.keys(errors).length) return send(res, 400, { error: 'Thông tin chưa hợp lệ', errors });
@@ -121,11 +150,14 @@ async function api(req, res, url) {
 
   // --- admin ---
   if (m === 'POST' && p === '/api/admin/login') {
+    const key = 'login:' + clientIp(req);
+    if (limited(key, 10, 900e3)) return send(res, 429, { error: 'Thử sai quá nhiều lần, đợi 15 phút.' });
     const b = await readBody(req);
     if (!samePass(b.password)) return send(res, 401, { error: 'Sai mật khẩu' });
+    hits.delete(key);
     const t = crypto.randomBytes(32).toString('hex');
     sessions.set(t, Date.now() + SESSION_MS);
-    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    const secure = isHttps(req) ? '; Secure' : '';
     return send(res, 200, { ok: true }, { 'Set-Cookie': `sid=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}` });
   }
   if (m === 'POST' && p === '/api/admin/logout') {
@@ -140,6 +172,7 @@ async function api(req, res, url) {
       contacts: db.prepare('SELECT COUNT(*) n FROM contacts').get().n, unread: db.prepare("SELECT COUNT(*) n FROM contacts WHERE status='new'").get().n });
 
     const crud = { posts: postInput, jobs: jobInput };
+    // tên bảng chỉ lấy từ whitelist trong regex, tên cột từ postInput/jobInput cố định; mọi giá trị đều đi qua tham số "?"
     if ((r = p.match(/^\/api\/admin\/(posts|jobs|contacts)(?:\/(\d+))?$/))) {
       const [, table, id] = r;
       if (m === 'GET' && !id) return send(res, 200, db.prepare(`SELECT * FROM ${table} ORDER BY created_at DESC, id DESC`).all());
@@ -167,7 +200,7 @@ const ROUTES = { '/': 'index', '/for-creators': 'for-creators', '/social-commerc
 function page(res, p) {
   const name = ROUTES[p.replace(/\/$/, '') || '/'] || (/^\/blog\/[\w-]+$/.test(p) && 'post');
   let file = name ? path.join(PUB, name + '.html') : path.join(PUB, path.normalize(p));
-  if (!file.startsWith(PUB) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+  if (!file.startsWith(PUB + path.sep) || /[\\/]\./.test(file.slice(PUB.length)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404, { 'Content-Type': MIME['.html'] });
     return fs.createReadStream(path.join(PUB, '404.html')).pipe(res);
   }
@@ -175,18 +208,39 @@ function page(res, p) {
   fs.createReadStream(file).pipe(res);
 }
 
+// CSP: chỉ chạy script từ chính site (không inline) → kể cả lọt chuỗi độc vào HTML cũng không thực thi được
+const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com", "img-src 'self' https: data: blob:", "connect-src 'self'",
+  "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
+
 export const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
+  res.setHeader('Content-Security-Policy', CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   try {
-    if (url.pathname.startsWith('/api/')) await api(req, res, url);
-    else page(res, decodeURIComponent(url.pathname));
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store');
+      // chống CSRF: request ghi dữ liệu phải là JSON và (nếu trình duyệt gửi Origin) cùng nguồn
+      if (req.method !== 'GET') {
+        const origin = req.headers.origin;
+        if (!/^application\/json\b/i.test(req.headers['content-type'] || '') ||
+            (origin && new URL(origin).host !== req.headers.host))
+          return send(res, 403, { error: 'Yêu cầu bị chặn' });
+      }
+      await api(req, res, url);
+    } else page(res, decodeURIComponent(url.pathname));
   } catch (e) {
-    console.error(e);
-    if (!res.headersSent) send(res, /json|large/.test(e.message) ? 400 : 500, { error: 'Yêu cầu không hợp lệ' });
+    const client = e instanceof URIError || /json|large|Invalid URL/.test(e.message);
+    if (!client) console.error(e);
+    if (!res.headersSent) send(res, client ? 400 : 500, { error: 'Yêu cầu không hợp lệ' });
   }
 });
+server.requestTimeout = 30e3; // không để kết nối treo giữ tài nguyên
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(ROOT, 'server.js'))
   server.listen(PORT, () => console.log(`VYRA chạy tại http://localhost:${PORT}  (admin: /admin)`));

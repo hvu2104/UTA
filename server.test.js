@@ -58,6 +58,46 @@ test('admin: chặn khi chưa đăng nhập, CRUD sau khi đăng nhập', async 
   assert.equal((await call('/api/admin/posts', { headers })).status, 401);
 });
 
+test('bảo mật: SQL injection không có tác dụng', async () => {
+  const before = (await (await call('/api/posts')).json()).total;
+  const inj = await (await call(`/api/posts?category=${encodeURIComponent("x' OR '1'='1")}`)).json();
+  assert.equal(inj.total, 0); // chuỗi bị coi là dữ liệu, không phải câu lệnh
+  assert.equal((await call(`/api/posts/${encodeURIComponent("a' OR 1=1--")}`)).status, 404);
+  await call('/api/posts?category=' + encodeURIComponent("'; DROP TABLE posts;--"));
+  assert.equal((await (await call('/api/posts')).json()).total, before);
+  assert.equal((await call('/api/posts?size=-1&page=1e999')).status, 200);
+});
+
+test('bảo mật: XSS — chặn link nguy hiểm, header CSP, không còn script inline', async () => {
+  const login = await call('/api/admin/login', { method: 'POST', body: { password: 'test-pass' } });
+  const headers = { Cookie: login.headers.get('set-cookie').split(';')[0] };
+  const p = await (await call('/api/admin/posts', { method: 'POST', headers,
+    body: { title: '<img src=x onerror=alert(1)>', category: 'Tin công ty', cover: 'javascript:alert(1)', slug: '"><script>' } })).json();
+  assert.equal(p.cover, '');
+  assert.match(p.slug, /^[a-z0-9-]+$/);
+  const r = await call('/');
+  assert.match(r.headers.get('content-security-policy'), /script-src 'self'(;|$)/);
+  assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  const fs = await import('node:fs');
+  for (const f of fs.readdirSync('public').filter(f => f.endsWith('.html'))) {
+    const h = fs.readFileSync('public/' + f, 'utf8');
+    assert.doesNotMatch(h, /<script(?![^>]*\bsrc=)[^>]*>|\son[a-z]+=/i, f + ' còn script/handler inline');
+  }
+  const bad = await call('/api/contact', { method: 'POST', body: { email: 'a@b.co', phone: '0901234567', channel: 'javascript:alert(1)' } });
+  assert.equal(bad.status, 400);
+});
+
+test('bảo mật: CSRF, body lạ, giới hạn đăng nhập', async () => {
+  const form = await fetch(base + '/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'email=a@b.co' });
+  assert.equal(form.status, 403);
+  assert.equal((await call('/api/contact', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: {} })).status, 403);
+  const arr = await fetch(base + '/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[1]' });
+  assert.equal(arr.status, 400);
+  let last;
+  for (let i = 0; i < 11; i++) last = await call('/api/admin/login', { method: 'POST', body: { password: 'sai' + i } });
+  assert.equal(last.status, 429);
+});
+
 test('trang: route đẹp và 404, chặn path traversal', async () => {
   assert.equal((await fetch(base + '/blog/abc')).status, 200);
   assert.equal((await fetch(base + '/khong-ton-tai')).status, 404);

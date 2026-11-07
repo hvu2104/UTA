@@ -16,11 +16,28 @@ npm start          # http://localhost:3000, admin: /admin (mật khẩu mặc đ
 npm test
 ```
 
-Biến môi trường: `PORT`, `ADMIN_PASSWORD` (**bắt buộc đặt khi deploy**), `DB_FILE` (đường dẫn file database).
+Biến môi trường:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `NODE_ENV=production` | Bật chế độ chạy thật: server **từ chối khởi động** nếu thiếu `ADMIN_PASSWORD` hoặc ngắn hơn 12 ký tự |
+| `ADMIN_PASSWORD` | Mật khẩu admin (bắt buộc khi deploy) |
+| `TRUST_PROXY=1` | Đặt khi chạy sau hosting/reverse proxy để lấy đúng IP người dùng và nhận biết HTTPS |
+| `DB_FILE` | Đường dẫn file database, ví dụ `/data/data.db` |
+| `PORT` | Cổng, mặc định 3000 |
+
+## Bảo mật
+- **SQL injection:** mọi giá trị đi qua câu lệnh tham số hoá (`?`); tên bảng/cột chỉ lấy từ whitelist trong code.
+- **XSS:** dữ liệu được escape trước khi chèn vào HTML; link ảnh/link kênh chỉ nhận `http(s)`; CSP `script-src 'self'` chặn mọi script inline (toàn bộ JS nằm trong `public/assets/`).
+- **CSRF:** cookie `SameSite=Strict` + API ghi dữ liệu chỉ nhận JSON và chặn `Origin` khác domain.
+- **Đăng nhập admin:** so sánh mật khẩu thời gian hằng, khoá 15 phút sau 10 lần sai/IP, cookie `HttpOnly` (+ `Secure` khi HTTPS), phiên hết hạn sau 8 giờ.
+- **Chống spam:** form liên hệ tối đa 5 lần/10 phút/IP + ô honeypot ẩn.
+- **Header:** CSP, HSTS (khi HTTPS), X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy; chặn path traversal và file ẩn.
+- `npm test` gồm các test SQL injection, XSS, CSRF, brute-force.
 
 ## Deploy (Render)
 1. New → Web Service → chọn repo này. Build command: để trống. Start command: `npm start`.
-2. Environment: thêm `ADMIN_PASSWORD`.
+2. Environment: thêm `NODE_ENV=production`, `TRUST_PROXY=1`, `ADMIN_PASSWORD`.
 3. Muốn dữ liệu không mất khi redeploy: gắn Persistent Disk (gói trả phí), mount ở `/data` và đặt `DB_FILE=/data/data.db`. Gói free sẽ reset database mỗi lần deploy/ngủ.
 
 Ảnh và chữ hiện là minh hoạ — thay ảnh bằng link ảnh bìa trong admin, hoặc sửa trực tiếp trong `public/`.
